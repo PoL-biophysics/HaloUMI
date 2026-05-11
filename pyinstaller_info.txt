@@ -1,0 +1,1 @@
+pyinstaller --onefile --noconsole --name="HaloUMI"  --add-data "HaloUMI_icon.png;." --add-data "HaloUMI_icon.ico;." HaloUMI.py
