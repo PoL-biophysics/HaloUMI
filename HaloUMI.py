@@ -6,18 +6,17 @@ import tkinter as tk
 import numpy as np
 import pandas as pd
 import openpyxl
-import tkinter as tk
 import matplotlib as mpl
 import math
 from tkinter import filedialog
 from PIL import Image, ImageTk
-from tkinter import filedialog, simpledialog
 from matplotlib import pyplot as plt
 from pathlib import Path
 from matplotlib.widgets import Slider, TextBox, CheckButtons
 from datetime import date, datetime
 
 os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
+
 
 # functions
 from HaloUMI_functions import (
