@@ -20,7 +20,7 @@ def find_plates(resized_image, scale):
         resized_image,
         method=cv.HOUGH_GRADIENT,
         dp= 1,
-        minDist= int(2000 * scale),
+        minDist= int(1800 * scale),
         param1= 50,
         param2= 30,
         minRadius= int(900 * scale),

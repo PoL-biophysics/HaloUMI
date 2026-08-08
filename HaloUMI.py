@@ -52,7 +52,7 @@ cmap_c = get_season(day)
 def HaloUMI_main(folder_name, file):
     
     image_path = os.path.join(folder_name, file)
-
+    short_file_name = os.path.basename(image_path)[:-4]
     grey_image, resized_image = preprocess_image(image_path, scale=0.1)
 
     plates = find_plates(resized_image, scale=0.1)
@@ -113,7 +113,7 @@ def HaloUMI_main(folder_name, file):
 
                 update(None)
 
-            def modular(epsilon_f=0.001, min_area_f=0.005, max_area_f=0.05, ratio_tolerance=(5/4), thresh_value=between_peaks, checks=initial):
+            def modular(epsilon_f=0.001, min_area_f=0.005, max_area_f=0.05, ratio_tolerance=(5/4), thresh_value=between_peaks, checks=initial, strain_name="Unknown_Strain"):
                 while ax.patches:
                     ax.patches[0].remove()
                 black_peak, grey_peak, white_peak, grey_plate = find_peaks_in_plate(grey_image, plate, plate_radius)
@@ -125,14 +125,14 @@ def HaloUMI_main(folder_name, file):
                 gaussian_blur = 71
                 blurred_plate = cv.GaussianBlur(blank_plate, (gaussian_blur, gaussian_blur), 0)
                 toxin_vertices, toxin_centres, polygon_areas = [], [], []
-                target_colours = []
+                target_colours, lawn_stdevs = [], []
                 masks = []
                 
                 # Always start with the original clean plate
                 display_plate = original_rgb_plate.copy()
                 
                 for contour in contours:
-                    toxin_vertices, centre, is_valid_contour, polygon_area = find_toxin_spot(contour, display_plate, all_toxin_vertices, toxin_centres, polygon_areas, epsilon_f, min_area_f, max_area_f, ratio_tolerance)
+                    toxin_vertices, centre, polygon_area, is_valid_contour = find_toxin_spot(contour, display_plate, all_toxin_vertices, toxin_centres, polygon_areas, epsilon_f, min_area_f, max_area_f, ratio_tolerance)
 
                     lawn_ring_vertices, deadzone_ring_vertices = [], []
 
@@ -144,32 +144,34 @@ def HaloUMI_main(folder_name, file):
 
                             deadzone_ring_vertices.append(dead_ring_vertex)
                         
-                        # # Graphing
-                        # import matplotlib.pyplot as plt
-                        # blueberry_hex, blueberry_rgb = "#96AAFA", (150,170,250)
-                        # cherry_hex, cherry_rgb = "#A03C6E", (160,60,110)
-                        # honeydew_hex, honeydew_rgb = "#64d2be", (100, 210, 190)
-                        # tomato_hex, tomato_rgb = "#F04650", (240,70,80)
-                        # grape_hex, grape_rgb = "#7846C8", (120,70,200)
+                        # Graphing
+                        import matplotlib.pyplot as plt
+                        blueberry_hex, blueberry_rgb = "#96AAFA", (150,170,250)
+                        cherry_hex, cherry_rgb = "#A03C6E", (160,60,110)
+                        honeydew_hex, honeydew_rgb = "#64d2be", (100, 210, 190)
+                        tomato_hex, tomato_rgb = "#F04650", (240,70,80)
+                        grape_hex, grape_rgb = "#7846C8", (120,70,200)
 
-                        # plt.rcParams['font.family'] = 'sans-serif'
-                        # plt.rcParams['font.sans-serif'] = 'Verdana'
-                        # plt.rcParams["savefig.bbox"] = "tight"
-                        # plt.rcParams["savefig.pad_inches"] = 0
-                        # plt.rcParams["savefig.dpi"] = 600
-                        # lawn_ring_polygon = np.array(lawn_ring_vertices, dtype=np.int32)
-                        # deadzone_ring_polygon = np.array(deadzone_ring_vertices, dtype=np.int32)
+                        plt.rcParams['font.family'] = 'sans-serif'
+                        plt.rcParams['font.sans-serif'] = 'Verdana'
+                        plt.rcParams["savefig.bbox"] = "tight"
+                        plt.rcParams["savefig.pad_inches"] = 0
+                        plt.rcParams["savefig.dpi"] = 600
+                        lawn_ring_polygon = np.array(lawn_ring_vertices, dtype=np.int32)
+                        deadzone_ring_polygon = np.array(deadzone_ring_vertices, dtype=np.int32)
 
-                        # cv.drawContours(rgb_plate, [lawn_ring_polygon], -1, cherry_rgb, 5)
+                        cv.drawContours(rgb_plate, [lawn_ring_polygon], -1, cherry_rgb, 5)
                         # cv.drawContours(rgb_plate, [deadzone_ring_polygon], -1, honeydew_rgb, 5)
                         # cv.circle(rgb_plate, (plate_radius,plate_radius), int((4/5)*plate_radius), blueberry_rgb, 5)
-                        # plt.imshow(rgb_plate)
+                        plt.imshow(rgb_plate)
                         # plt.savefig("12_toxin_analysis.svg")
-                        # plt.show()
+                        plt.show()
+                        
 
                         outer_rings = np.array(lawn_ring_vertices, dtype=np.int32)
-                        target_colour = get_target_colour(blank_plate,lawn_ring_vertices, deadzone_ring_vertices, checks[0])
+                        target_colour, lawn_stdev = get_target_colour(blank_plate,lawn_ring_vertices, deadzone_ring_vertices, checks[0])
                         target_colours.append(target_colour)
+                        lawn_stdevs.append(lawn_stdev)
 
                 #     outer_rings = np.array(lawn_ring_vertices, dtype=np.int32)
                 #     print(outer_rings)
@@ -193,11 +195,13 @@ def HaloUMI_main(folder_name, file):
                 invalid_halos = 0
 
                 from matplotlib.patches import Polygon
-                for toxin_vertices, toxin_centre, polygon_area, target_colour in zip(all_toxin_vertices, toxin_centres, polygon_areas, target_colours):
+                rows = []
+                spot_counter = 1
+                for toxin_vertices, toxin_centre, polygon_area, target_colour, lawn_stdev in zip(all_toxin_vertices, toxin_centres, polygon_areas, target_colours, lawn_stdevs):
                     poly_coords = toxin_vertices.reshape(-1, 2)
 
                     picker_radius = math.sqrt(polygon_area / math.pi)
-                    print(picker_radius)
+                    # print(picker_radius)
                     # Check if this specific spot is meant to be disabled
                     currently_disabled, _ = is_disabled(toxin_centre, disabled_centers)
 
@@ -221,6 +225,7 @@ def HaloUMI_main(folder_name, file):
                     for vertex in toxin_vertices:
                         get_halo_distance(toxin_centre, blurred_plate, vertex[0], target_colour, halo_distances, halo_directions, halo_vertices, line_length=200)
 
+                    
                     mean_halo, stdev_halo, lower_bound_halo, upper_bound_halo = statistics(halo_distances, 1)
 
                     valid_halos, valid_anorms, valid_dirs, valid_vers = [], [], [], []
@@ -237,13 +242,45 @@ def HaloUMI_main(folder_name, file):
                             if halo_check is False:
                                 invalid_halos += 1
                                 # print(halo_d)
+                        
                     
+                    a_norm = checks[2]
+                    if a_norm:
+                        per_spot_list = [item for item in valid_anorms]
+                    else:
+                        per_spot_list = [item for item in valid_halos]    
+                
+                    if per_spot_list:
+                        
+                        for m in per_spot_list:
+                            # print(m, lawn_stdev, polygon_area, m**2, math.log2(lawn_stdev), "", "")
+                            spot_name = f"{strain_name}_s{spot_counter}"
+                            rows.append({
+                                "Name": spot_name,
+                                "r": m,
+                                "σ_vis": lawn_stdev,
+                                "area": polygon_area,
+                                "r^2": m**2,
+                                "log2_σ_vis": math.log2(lawn_stdev),
+                                "K": "",
+                                "r_corr": "",
+                                })
+                        
+                        spot_counter += 1
+
+
                     all_halo_distances.append(valid_halos)
                     all_anorms.append(valid_anorms)
                     all_toxin_dirs.append(valid_dirs)
                     all_toxin_vers.append(valid_vers)
 
-                
+                if rows:            
+                    fresh_df = pd.DataFrame(rows)
+                    nonlocal final_fresh_df
+                    final_fresh_df = fresh_df
+
+
+                # print(lawn_stdevs)
                 a_norm = checks[2]
                 if a_norm:
                     flat = [item for sublist in all_anorms for item in sublist]
@@ -289,6 +326,7 @@ def HaloUMI_main(folder_name, file):
                 
                 return all_halo_distances, display_plate
 
+            final_fresh_df = pd.DataFrame()
             # Run initial analysis
             all_halo_distances, _ = modular()
             fig.canvas.mpl_connect('pick_event', on_pick)
@@ -301,7 +339,7 @@ def HaloUMI_main(folder_name, file):
 
 
             epsilon_slider = Slider(epsilon_ax, 'Epsilon', 2, 5, valinit=3, valstep=0.5, color = '#96aafa')
-            min_area_slider = Slider(min_area_ax, 'Min Area', 0, 0.020, valinit=0.005, valstep=0.001, color = '#64d2be')
+            min_area_slider = Slider(min_area_ax, 'Min Area', 0.0005, 0.020, valinit=0.001, valstep=0.0005, color = '#64d2be')
             max_area_slider = Slider(max_area_ax, 'Max Area', 0.020, 0.100, valinit=0.050, valstep=0.001, color = '#a03c6e')
             ratio_slider = Slider(ratio_ax, 'Ratio Tolerance', 1.0, 1.5, valinit=5/4, valstep=0.025, color = '#7846c8')
             thresh_slider = Slider(thresh_ax, 'Threshold', grey_peak, white_peak, valinit=between_peaks, valstep=2, color = '#f04650')
@@ -313,13 +351,15 @@ def HaloUMI_main(folder_name, file):
 
             def update(val):
                 
+                current_strain = strain_names[-1] if strain_names else "Unknown_Strain"
                 updated_distances, new_plate = modular(
                     epsilon_f=10**(-epsilon_slider.val), 
                     min_area_f=min_area_slider.val, 
                     max_area_f=max_area_slider.val, 
                     ratio_tolerance=ratio_slider.val,
                     thresh_value=thresh_slider.val,
-                    checks=checks.get_status()
+                    checks=checks.get_status(),
+                    strain_name=current_strain
                 )
                 # Update the global all_halo_distances for final processing
                 nonlocal all_halo_distances
@@ -356,7 +396,8 @@ def HaloUMI_main(folder_name, file):
                 max_area_f=max_area_slider.val, 
                 ratio_tolerance=ratio_slider.val,
                 thresh_value=thresh_slider.val,
-                checks=checks.get_status()
+                checks=checks.get_status(),
+                strain_name=strain_name
             )
 
             plt_size = (8, 8 * final_processed_plate.shape[0] / final_processed_plate.shape[1])
@@ -377,12 +418,18 @@ def HaloUMI_main(folder_name, file):
             naming = f"{strain_name}_{short_file_name}"
             # naming = f"{p}_{os.path.basename(image_path)}"
 
-            df = pd.read_excel(workbook_file, sheet_name='Sheet')
-            df[f'{naming}'] = pd.Series(flat)
+            sheet_title = short_file_name[:30]
 
-            with pd.ExcelWriter(workbook_file, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-                df.to_excel(writer, sheet_name='Sheet' ,index=False)
-                
+            if not final_fresh_df.empty:
+                try:
+                    existing_df = pd.read_excel(workbook_file, sheet_name=sheet_title)
+                    updated_df = pd.concat([existing_df, final_fresh_df], ignore_index=True)
+                except Exception:
+                    updated_df = final_fresh_df
+
+                with pd.ExcelWriter(workbook_file, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+                    updated_df.to_excel(writer, sheet_name=sheet_title, index=False)
+               
         except Exception as e:
             print(f"Error processing plate {p} in file {file}: {e} at line {e.__traceback__.tb_lineno}")
             continue
@@ -434,11 +481,13 @@ select_button.pack(pady=10)
 # Run the app
 root.mainloop()
 
+# Find these lines at the bottom of your script:
 folder_name = selected_folder
 
-workbook = openpyxl.Workbook()
+# Change this initialization block to clear out old data cleanly:
 workbook_file = Path(folder_name) / "HaloUMI_output.xlsx"
-workbook.save(workbook_file)
+# Just create an empty file base so pandas can append to it safely
+pd.DataFrame().to_excel(workbook_file, sheet_name="Temp_Base") 
 
 for i, file in enumerate(sorted(os.listdir(folder_name))):
     if file.endswith(".tif") or file.endswith(".tiff"):

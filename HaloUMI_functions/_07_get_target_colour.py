@@ -60,4 +60,4 @@ def get_target_colour(rgb_plate, lawn_ring_vertices, deadzone_ring_vertices, che
     # plt.savefig("13_target-colour.svg")
     # plt.show()
 
-    return target_colour
+    return target_colour, stdev_lawn
